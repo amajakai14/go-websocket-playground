@@ -7,24 +7,6 @@
     <title>Document</title>
   </head>
   <body>
-    <script>
-      const socket = new WebSocket("ws://localhost:8088/ws/1");
-
-      socket.onopen = function () {
-        console.log("Connecting Websocket...");
-      };
-
-      socket.onclose = function () {
-        console.log("Disconnected Websocket...");
-      };
-
-      socket.onmessage = function (event) {
-        console.log("Message from websocket", event.data);
-      };
-
-      socket.onerror = function (err) {
-        console.log("Error Websocket...", err);
-      };
-    </script>
+    <div>Welcome to my website</div>
   </body>
 </html>

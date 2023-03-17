@@ -1,14 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/patrickmn/go-cache"
 )
 
 const (
@@ -95,7 +93,7 @@ var hub = Hub{
 	rooms:      make(map[string]map[*Connection]bool),
 }
 
-func serverWs(w http.ResponseWriter, r *http.Request, roomId string, cache *cache.Cache) {
+func serverWs(w http.ResponseWriter, r *http.Request, roomId string) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -103,8 +101,8 @@ func serverWs(w http.ResponseWriter, r *http.Request, roomId string, cache *cach
 	c := &Connection{send: make(chan []byte, 256), ws: ws}
 	s := Subscription{c, roomId}
 	hub.register <- s
-	go s.writePump(cache)
-	go s.readPump(cache)
+	go s.writePump()
+	go s.readPump()
 }
 
 func (h *Hub) run() {
@@ -145,7 +143,7 @@ func (h *Hub) run() {
 	}
 }
 
-func (s Subscription) readPump(cache *cache.Cache) {
+func (s Subscription) readPump() {
 	c := s.conn
 	defer func() {
 		hub.unregister <- s
@@ -156,25 +154,17 @@ func (s Subscription) readPump(cache *cache.Cache) {
 	c.ws.SetPongHandler(func(string) error { c.ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
 
-		var menu Menu
-		err := c.ws.ReadJSON(&menu)
+		_, msg, err := c.ws.ReadMessage()
 		if err != nil {
 			log.Fatalf("Error parsing json: %v", err)
 			break
 		}
-		log.Printf("Read Pump Menu: %v", menu.Amount)
-		menus := updateCache(cache, s.room, &menu)
-		log.Printf("Read Pump Menus: %v", menus.Menus)
-		menusArray := menus.toArray()
-		log.Printf("Read Pump Array: %v", menus.Menus)
-		message, err := json.Marshal(menusArray)
-		log.Printf("Read Pump Message: %v", message)
 		if err != nil {
 			log.Fatalf("Error convert to json: %v", err)
 			break
 		}
-		m := Message{message, s.room}
-		hub.broadcast <- m
+		message := &Message{data: msg, room: s.room}
+		hub.broadcast <- *message
 	}
 }
 
@@ -183,18 +173,7 @@ func (c *Connection) write(messageType int, payload []byte) error {
 	return c.ws.WriteMessage(messageType, payload)
 }
 
-func (c *Connection) sendMessage(cache *cache.Cache, roomId string) error {
-	menus := getCache(cache, roomId)
-	for _, menu := range menus.Menus {
-		err := c.ws.WriteJSON(menu)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Subscription) writePump(cache *cache.Cache) {
+func (s *Subscription) writePump() {
 	c := s.conn
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -222,80 +201,17 @@ func (s *Subscription) writePump(cache *cache.Cache) {
 func main() {
 	go hub.run()
 
-	cache := cache.New(5*time.Minute, 10*time.Minute)
-
 	router := gin.New()
-	router.LoadHTMLFiles("indy.html")
+	router.LoadHTMLFiles("indy.html", "index.html")
+	router.GET("/", func(c *gin.Context) {
+		c.HTML(200, "index.html", nil)
+	})
 	router.GET("/room/:roomId", func(c *gin.Context) {
 		c.HTML(200, "indy.html", nil)
 	})
 	router.GET("/ws/:roomId", func(c *gin.Context) {
 		roomId := c.Param("roomId")
-		serverWs(c.Writer, c.Request, roomId, cache)
+		serverWs(c.Writer, c.Request, roomId)
 	})
 	router.Run("0.0.0.0:8088")
-}
-
-func setCache(c *cache.Cache, key string, value interface{}) {
-	c.Set(key, value, cache.DefaultExpiration)
-}
-
-func getCache(c *cache.Cache, key string) Menus {
-	some, found := c.Get(key)
-	if !found {
-		return Menus{map[int]Menu{}}
-	}
-
-	val, ok := some.(Menus)
-	if !ok {
-		return Menus{map[int]Menu{}}
-	}
-	return val
-}
-
-func updateCache(c *cache.Cache, roomId string, addMenu *Menu) Menus {
-	log.Printf("addMenu: %v", addMenu)
-	menus := getCache(c, roomId)
-	updateMenus := calSomeValue(c, roomId, addMenu, menus)
-	log.Printf("updateMenus: %v", updateMenus)
-	setCache(c, roomId, updateMenus)
-	return updateMenus
-}
-
-func calSomeValue(c *cache.Cache, roomId string, addMenu *Menu, menus Menus) Menus {
-	value, ok := menus.Menus[addMenu.Id]
-	if !ok {
-		menus.Menus[addMenu.Id] = *addMenu
-		return menus
-	}
-	value.addAmount(addMenu)
-	value.addUserId(addMenu)
-	return menus
-}
-
-func (m *Menu) addAmount(menu *Menu) {
-	m.Amount += menu.Amount
-	if m.Amount <= 0 {
-		m.Amount = 0
-	}
-}
-
-func (m *Menu) addUserId(menu *Menu) {
-	m.UserId = menu.UserId
-}
-
-func parseJson(data []byte, menu *Menu) error {
-	err := json.Unmarshal(data, &menu)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (menus *Menus) toArray() MenuArray {
-	var result []Menu
-	for _, menu := range menus.Menus {
-		result = append(result, menu)
-	}
-	return MenuArray{result}
 }

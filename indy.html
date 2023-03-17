@@ -22,22 +22,10 @@
           if (!conn) {
             return false;
           }
-          if (
-            !menu_id.value ||
-            !menu_name.value ||
-            !user_id.value ||
-            !amount.value
-          ) {
+          if (!msg.value) {
             return false;
           }
-          const payload = {
-            id: parseInt(menu_id.value),
-            name: menu_name.value,
-            amount: parseInt(amount.value),
-            user_id: [parseInt(user_id.value)],
-          };
-          console.log("payload", payload);
-          conn.send(JSON.stringify(payload));
+          conn.send(msg.value);
           return false;
         };
 
@@ -109,16 +97,7 @@
   <body>
     <div id="log"></div>
     <form id="form">
-      <input
-        type="text"
-        id="menu_id"
-        size="64"
-        autofocus
-        placeholder="menu id"
-      />
-      <input type="text" id="menu_name" size="64" placeholder="menu name" />
-      <input type="text" id="user_id" size="64" placeholder="user id" />
-      <input type="text" id="amount" size="64" placeholder="amount" />
+      <input type="text" id="msg" size="64" placeholder="message" />
       <input type="submit" value="Send" />
     </form>
   </body>
