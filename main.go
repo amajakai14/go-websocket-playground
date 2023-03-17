@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"time"
@@ -198,6 +199,8 @@ func (s *Subscription) writePump() {
 	}
 }
 
+var addr = flag.String("addr", ":8088", "http service address")
+
 func main() {
 	go hub.run()
 
@@ -213,5 +216,5 @@ func main() {
 		roomId := c.Param("roomId")
 		serverWs(c.Writer, c.Request, roomId)
 	})
-	router.Run("0.0.0.0:8088")
+	router.Run(*addr)
 }
